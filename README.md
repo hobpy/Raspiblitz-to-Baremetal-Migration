@@ -1,4 +1,5 @@
 # ⚡ LND Migration Guide (Raspiblitz, Bare-metal / MiniBolt)
+# NOT YET TESTED
 ---
 
 > This document describes a **migration process**, not a drop-in configuration.
@@ -139,7 +140,7 @@ If anything feels wrong later, you can instantly revert.
 # LND
 sudo systemctl stop lnd
 
-# Nextcloud SCB backup (custom service/timer)
+# Nextcloud SCB backup (custom service/timer) / UNIQUE TO ME
 sudo systemctl stop nextcloud-scb-upload.timer || true
 sudo systemctl stop nextcloud-scb-upload.service || true
 sudo systemctl disable nextcloud-scb-upload.timer
