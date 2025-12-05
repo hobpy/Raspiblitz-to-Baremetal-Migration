@@ -4,10 +4,9 @@
 
 ---
 
-> This document describes a **migration process**, not a drop-in configuration.
-> Paths, firewall rules, and `lnd.conf` settings must be adapted to each
-> operator’s environment.
-
+> > This document records the exact LND migration process I plan to use.
+> It is shared for reference and feedback, not as a universal guide.
+> Your paths, firewall rules, and `lnd.conf` will likely differ.
 
 ## Assumptions & Rules (READ FIRST)
 
@@ -62,6 +61,14 @@ Catches wiring errors early and safely.
 
 ### Commands
 
+**Emergency Contact Info**
+This information is not used during a normal migration, but ensures you know where recovery materials are before proceeding.
+```
+## 🆘 Emergency Recovery
+- **Seed phrase location**: [YOUR_SECURE_LOCATION]
+- **Latest SCB backup**: [YOUR_BACKUP_LOCATION]  
+```
+
 **On Raspiblitz**
 
 ```bash
@@ -88,6 +95,15 @@ sudo ls -lh /data/lnd/data/chain/bitcoin/mainnet
 * Files exist with expected sizes
 * No references to `/mnt/hdd` on MiniBolt
 
+**Check for pending HTLCs or force-closing channels**
+```
+# On Raspiblitz - Check for any pending HTLCs or force-closing channels
+sudo -u bitcoin lncli listchannels | grep -E "(pending_htlcs|waiting_close)"
+sudo -u bitcoin lncli pendingchannels
+
+```
+
+
 ---
 
 ## Phase 1 — Freeze Old Node (Hard Lock)
@@ -103,9 +119,21 @@ This removes *all* dual-node risk, even from hidden services or human error.
 ### Commands (Raspiblitz)
 
 ```bash
-sudo systemctl stop lnd
+# Stop all related services first
+sudo systemctl stop lnd rtl thunderhub
+sudo systemctl disable lnd rtl thunderhub
+
+# Export Channel backup
 sudo -u bitcoin lncli exportchanbackup --all
+
+# Freeze
 sudo mv /mnt/hdd/lnd /mnt/hdd/lnd.FROZEN-$(date +%Y%m%d)
+
+# NEW: Generate checksums of critical database files
+sudo find /mnt/hdd/lnd.FROZEN-* -name "*.db" -exec sha256sum {} \; > /tmp/raspiblitz_db_checksums.txt
+sudo cp /tmp/raspiblitz_db_checksums.txt /home/admin/
+echo "Database checksums saved to /home/admin/raspiblitz_db_checksums.txt"
+
 ```
 
 ### Validation
@@ -142,7 +170,7 @@ If anything feels wrong later, you can instantly revert.
 # LND
 sudo systemctl stop lnd
 
-# Nextcloud SCB backup (custom service/timer)
+# Custom service/timers (Examples: Nextcloud, rsync jobs, cron, cloud sync)
 sudo systemctl stop nextcloud-scb-upload.timer || true
 sudo systemctl stop nextcloud-scb-upload.service || true
 sudo systemctl disable nextcloud-scb-upload.timer
@@ -207,27 +235,62 @@ This is the actual migration of identity, channels, and funds.
 ### Commands (run on Raspiblitz)
 
 ```bash
+# TIMING: Aim to complete Phases 3-5 within 2 hours to minimize peer timeout risk
+echo "Migration started at: $(date)"
+
 sudo rsync -av --progress \
   /mnt/hdd/lnd.FROZEN-* /mnt/hdd/lnd.FROZEN-CURRENT
 sudo rsync -av --progress \
   /mnt/hdd/lnd.FROZEN-CURRENT/ \
   admin@minibolt:/data/lnd/
+
 ```
 
 *(Replace /mnt/hdd/lnd.FROZEN-CURRENT with your actual frozen directory name.)*
+
+### Copy checksum file for verification 
+```
+scp /home/admin/raspiblitz_db_checksums.txt admin@minibolt:/tmp/
+```
+
 
 ### Fix ownership (MiniBolt)
 
 ```bash
 sudo chown -R lnd:lnd /data/lnd
 sudo chmod -R 700 /data/lnd
+
 ```
+
+### Verify data integrity (Advanced / Optional)
+```
+sudo find /data/lnd -name "*.db" -exec sha256sum {} \; > /tmp/minibolt_db_checksums.txt
+echo "=== DATABASE INTEGRITY CHECK ==="
+diff /tmp/raspiblitz_db_checksums.txt /tmp/minibolt_db_checksums.txt
+if [ $? -eq 0 ]; then
+    echo "✅ Database checksums match - copy successful"
+else
+    echo "❌ Database checksums differ - STOP and investigate"
+    exit 1
+fi
+```
+
+> ⚠️ **Important**
+> These checksums confirm **filesystem copy integrity only** (no corruption or partial transfer).
+> They do **not** guarantee Lightning protocol safety, channel state correctness,
+> or successful recovery after LND startup.
+
 
 ### Validation
 
 ```bash
 sudo ls -lh /data/lnd/data/chain/bitcoin/mainnet
 sudo ls -l /data/lnd/v3_onion_private_key
+
+# Verify TLS files are copied
+sudo ls -l /data/lnd/tls.cert /data/lnd/tls.key
+
+
 ```
 
 You should now see:
@@ -258,6 +321,23 @@ Most migration failures happen here, not in the copy.
 sed 's/^/    /' /data/lnd/lnd.conf | less
 sudo systemctl cat lnd
 cat /data/bitcoin/bitcoin.conf
+```
+
+### Verify Paths
+```
+# Verify critical paths match
+grep -E "(bitcoind\.|zmq)" /data/lnd/lnd.conf
+grep -E "(datadir|rpcuser|rpcpassword)" /data/bitcoin/bitcoin.conf
+
+# Ensure no Raspiblitz-specific paths remain
+grep -r "/mnt/hdd" /data/lnd/ || echo "No old paths found - good!"
+```
+
+### Ensure Network Connectivity
+```
+# Ensure Bitcoin Core connectivity
+bitcoin-cli getblockchaininfo
+bitcoin-cli getnetworkinfo
 ```
 
 ### Rules
@@ -330,26 +410,48 @@ sudo -u lnd lncli unlock
 ### Identity
 
 ```bash
-lncli getinfo
+sudo -u lnd lncli getinfo
+
+# Compare with noted address from old node
+sudo -u lnd lncli getinfo | grep uris
+
 ```
 
 ✅ `identity_pubkey` matches old node
 ✅ `uris` contains the same .onion address as before
 
+### Peers
+
+```bash
+# Check peer connections after startup
+sudo -u lnd lncli listpeers
+sudo -u lnd lncli getnetworkinfo
+```
+
+✅ Peers are connecting
+
+
 ### Channels
 
 ```bash
-lncli listchannels
-lncli pendingchannels
+sudo -u lnd lncli listchannels
+sudo -u lnd lncli pendingchannels
 ```
 
 ✅ Channels appear / recovering
 
+### Macaroon
+```
+sudo ls -l /data/lnd/data/chain/bitcoin/mainnet/*.macaroon
+
+```
+
+✅ Macaroon present
 ### Balances
 
 ```bash
-lncli walletbalance
-lncli channelbalance
+sudo -u lnd lncli walletbalance
+sudo -u lnd lncli channelbalance
 ```
 
 ✅ Totals look sane
@@ -368,7 +470,7 @@ journalctl -u lnd -n 100 --no-pager
 
 ### What this does
 
-Lets the node settle without interference.
+Lets the node settle without interference for 24 hours.
 
 ### Why it matters
 
@@ -408,12 +510,19 @@ sudo systemctl start thunderhub
 ---
 
 ## Phase 9 — Final Commit
-
 ### What this does
-
 Declares MiniBolt the production node.
 
-### Actions
+### Final Success Validation
+```
+# Verify all expected channels are active (not just present)
+sudo -u lnd lncli listchannels --active_only | wc -l
+# Should match your expected active channel count
+
+# Verify no force-closed channels
+sudo -u lnd lncli pendingchannels | grep -c "waiting_close_channels" || echo "0"
+# Should be 0
+```
 
 * Export a new SCB
 * Back it up off-box
@@ -421,8 +530,6 @@ Declares MiniBolt the production node.
 * Retain `/mnt/hdd/lnd.FROZEN-*` as cold archive
 
 ---
-
-
 
 ## Abort & Rollback Logic (Minibolt Only)
 If you decide not to proceed any further (at any point up to and including Phase 6):
