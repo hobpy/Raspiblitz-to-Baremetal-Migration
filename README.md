@@ -1,5 +1,7 @@
 # ⚡ LND Migration Guide (Raspiblitz, Bare-metal / MiniBolt)
+
 # ⚠️ NOT YET TESTED ⚠️
+
 ---
 
 > This document describes a **migration process**, not a drop-in configuration.
@@ -7,7 +9,7 @@
 > operator’s environment.
 
 
-## 0. Assumptions & Rules (READ FIRST)
+## Assumptions & Rules (READ FIRST)
 
 **Assumptions**
 
@@ -28,7 +30,7 @@
 
 ---
 
-## 1. Version Handling (Important Context)
+## Version Handling (Important Context)
 
 **What this does**
 Clarifies how LND version differences are handled.
@@ -48,7 +50,7 @@ LND supports **forward database migrations**, not backward ones.
 
 ---
 
-## 2. Phase 0 — Pre-Flight Checks (No Risk, Offline)
+## Phase 0 — Pre-Flight Checks (No Risk, Offline)
 
 ### What this does
 
@@ -88,7 +90,7 @@ sudo ls -lh /data/lnd/data/chain/bitcoin/mainnet
 
 ---
 
-## 3. Phase 1 — Freeze Old Node (Hard Lock)
+## Phase 1 — Freeze Old Node (Hard Lock)
 
 ### What this does
 
@@ -123,7 +125,7 @@ systemctl status lnd
 
 ---
 
-## 4. Phase 2 — Prepare MiniBolt (Rollback Safety)
+## Phase 2 — Prepare MiniBolt (Rollback Safety)
 
 ### What this does
 
@@ -140,7 +142,7 @@ If anything feels wrong later, you can instantly revert.
 # LND
 sudo systemctl stop lnd
 
-# Nextcloud SCB backup (custom service/timer) / UNIQUE TO ME
+# Nextcloud SCB backup (custom service/timer)
 sudo systemctl stop nextcloud-scb-upload.timer || true
 sudo systemctl stop nextcloud-scb-upload.service || true
 sudo systemctl disable nextcloud-scb-upload.timer
@@ -169,7 +171,7 @@ sudo rsync -av /data/lnd/ /data/lnd.minibolt-init-backup/
 
 ---
 
-## 5. Phase 3 — Data Transplant (Frozen Snapshot)
+## Phase 3 — Data Transplant (Frozen Snapshot)
 
 ### What this does
 
@@ -217,7 +219,7 @@ or a new Tor identity will be generated.
 
 ---
 
-## 6. Phase 4 — Configuration Reconciliation (DO NOT RUSH)
+## Phase 4 — Configuration Reconciliation (DO NOT RUSH)
 
 ### What this does
 
@@ -245,8 +247,10 @@ cat /data/bitcoin/bitcoin.conf
 Do **not** start LND until this is correct.
 
 ---
+## ⚠️⚠️ Point of no return ⚠️⚠️
+---
 
-## 7. Phase 5 — First Start (DB Migration)
+## Phase 5 — First Start (DB Migration)
 
 ### What this does
 
@@ -283,7 +287,7 @@ sudo -u lnd lncli unlock
 
 ---
 
-## 8. Phase 6 — Manual Validation (NO AUTOMATION YET)
+## Phase 6 — Manual Validation (NO AUTOMATION YET)
 
 ### Identity
 
@@ -322,7 +326,7 @@ journalctl -u lnd -n 100 --no-pager
 
 ---
 
-## 9. Phase 7 — Cooling Period
+## Phase 7 — Cooling Period
 
 ### What this does
 
@@ -340,7 +344,7 @@ Late issues show up here, not at first start.
 
 ---
 
-## 10. Phase 8 — Re-enable Automation
+## Phase 8 — Re-enable Automation
 
 ### SCB backups
 
@@ -365,7 +369,7 @@ sudo systemctl start thunderhub
 
 ---
 
-## 11. Phase 9 — Final Commit
+## Phase 9 — Final Commit
 
 ### What this does
 
@@ -380,9 +384,15 @@ Declares MiniBolt the production node.
 
 ---
 
-## 12. Abort & Rollback Logic
 
-If you abort **before Phase 7**:
+
+## Abort & Rollback Logic (Minibolt Only)
+If you decide not to proceed any further (at any point up to and including Phase 6):
+
+This rollback restores the MiniBolt node’s local filesystem state.
+It does **not** undo Lightning network interactions that may have
+occurred after first start.
+
 
 ```bash
 sudo systemctl stop lnd
@@ -390,6 +400,3 @@ sudo rm -rf /data/lnd
 sudo mv /data/lnd.minibolt-init-backup /data/lnd
 sudo chown -R lnd:lnd /data/lnd
 ```
-
-Old node remains frozen unless you explicitly restore it.
-
