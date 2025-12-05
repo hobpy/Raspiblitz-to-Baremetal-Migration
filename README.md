@@ -170,6 +170,29 @@ sudo rsync -av /data/lnd/ /data/lnd.minibolt-init-backup/
 * No automation running
 
 ---
+## ✅ Migration Blackout Entry Check (REQUIRED)
+
+Before proceeding, confirm **both nodes are inert**.
+
+### Old Node — Raspiblitz
+
+- `/mnt/hdd/lnd` has been renamed to `/mnt/hdd/lnd.FROZEN-*`
+- `/mnt/hdd/lnd` no longer exists
+- `systemctl status lnd` shows inactive
+- Final SCB exported and timestamp verified
+- Current `.onion` URI noted from `lncli getinfo` (for later comparison)
+
+### New Node — MiniBolt
+
+- `lnd` is stopped
+- All SCB automation stopped and disabled
+- RTL / Thunderhub / any UI stopped
+- No timers touching `/data/lnd`
+- `/data/lnd.minibolt-init-backup` created
+
+✅ **Do not proceed to data copy unless ALL items above are confirmed.**
+
+---
 
 ## Phase 3 — Data Transplant (Frozen Snapshot)
 
@@ -191,7 +214,7 @@ sudo rsync -av --progress \
   admin@minibolt:/data/lnd/
 ```
 
-*(Replace /mnt/hdd/lnd.FROZEN-YYYYMMDD with your actual frozen directory name.)*
+*(Replace /mnt/hdd/lnd.FROZEN-CURRENT with your actual frozen directory name.)*
 
 ### Fix ownership (MiniBolt)
 
@@ -247,6 +270,21 @@ cat /data/bitcoin/bitcoin.conf
 Do **not** start LND until this is correct.
 
 ---
+
+## ✅ Pre-Start Final Sanity Check
+
+Before starting LND for the first time on MiniBolt:
+
+- No LND processes are running anywhere else
+- Old node remains frozen and powered off
+- `/data/lnd` contains migrated data only
+- `v3_onion_private_key` is present and owned by `lnd:lnd`
+- No automation or UI processes are enabled
+- You are prepared for forward-only DB migration
+
+✅ **Once LND starts, Lightning network interactions may occur.**
+
+
 ## ⚠️⚠️ Point of no return ⚠️⚠️
 ---
 
