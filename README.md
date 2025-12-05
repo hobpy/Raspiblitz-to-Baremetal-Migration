@@ -1,5 +1,5 @@
 # ⚡ LND Migration Guide (Raspiblitz, Bare-metal / MiniBolt)
-# NOT YET TESTED
+# ⚠️ NOT YET TESTED ⚠️
 ---
 
 > This document describes a **migration process**, not a drop-in configuration.
